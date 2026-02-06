@@ -11,7 +11,7 @@ You can use the included script to install `skill-sync` itself as a skill on you
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/pyan1024/skill-sync.git
+git clone https://github.com/pityfish/skill-sync.git
 
 # 2. Run the installer
 python3 skill-sync/scripts/install_skill.py ./skill-sync

@@ -11,7 +11,7 @@
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/pyan1024/skill-sync.git
+git clone https://github.com/pityfish/skill-sync.git
 
 # 2. 运行安装程序
 python3 skill-sync/scripts/install_skill.py ./skill-sync

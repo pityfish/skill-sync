@@ -38,3 +38,12 @@ python3 skill-sync/scripts/install_skill.py ./skill-sync
 - **集中管理**：在 `~/.skill_repo/` 中保留一份技能副本。
 - **多平台同步**：自动同步到 Gemini, Claude 和 Antigravity。
 - **冲突预防**：在覆盖前检查是否存在现有文件。
+
+## 支持环境
+
+- **操作系统**: macOS, Linux (需要支持软链接)
+- **Python**: 3.9 或更高版本
+- **支持的 Agent**:
+    - Google Gemini (~/.gemini)
+    - Claude Code (~/.claude)
+    - Google Antigravity (~/.gemini/antigravity)

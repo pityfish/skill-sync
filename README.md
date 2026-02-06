@@ -38,3 +38,12 @@ Once installed, you can ask your AI assistant to manage your skills using natura
 - **Central Management**: Keep one copy of your skills in `~/.skill_repo/`.
 - **Multi-Platform Sync**: Automatically syncs to Gemini, Claude, and Antigravity.
 - **Conflict Prevention**: Checks for existing files before overwriting.
+
+## Supported Environments
+
+- **OS**: macOS, Linux (requires symbolic link support)
+- **Python**: 3.9 or higher
+- **Supported Agents**:
+    - Google Gemini (~/.gemini)
+    - Claude Code (~/.claude)
+    - Google Antigravity (~/.gemini/antigravity)

@@ -38,8 +38,9 @@ python3 skill-sync/scripts/install_skill.py ./skill-sync
 > "检查有哪些技能安装成功了"
 
 **更新技能**
-> "更新所有通过 Git 安装的技能"
-> "检查技能更新"
+> "更新所有通过 Git 安装的技能" (对应 `--all` 模式)
+> "检查技能更新" (交互式菜单)
+> "只更新 'web-search' 这个技能"
 
 **卸载技能**
 > "卸载 'old-skill' 这个技能"

@@ -86,8 +86,14 @@ Update all Git-based skills in the central repository by running `git pull`.
 
 **Usage**:
 ```bash
-python3 scripts/update_skills.py
+python3 scripts/update_skills.py [skill-name ...] [--all]
 ```
+
+**Features**:
+- **Status Check**: automatically checks for remote updates before prompting.
+- **Selective Update**: Interactive menu to choose which skills to update (if no args provided).
+- **Specific Update**: `python3 scripts/update_skills.py my-skill`
+- **Update All**: `python3 scripts/update_skills.py --all`
 
 ### 3. List All Skills (`list_synced.py`)
 

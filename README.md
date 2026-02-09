@@ -38,8 +38,9 @@ Once this skill is installed, you can ask your AI assistant (e.g., Claude, Gemin
 > "Check which skills are installed"
 
 **Update Skills**
-> "Update all my Git-based skills"
-> "Check for skill updates"
+> "Update all my Git-based skills" (uses `--all`)
+> "Check for skill updates" (interactive menu)
+> "Update the 'web-search' skill only"
 
 **Uninstall a Skill**
 > "Uninstall the 'old-skill'"

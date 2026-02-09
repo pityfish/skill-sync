@@ -1,13 +1,60 @@
 #!/usr/bin/env python3
 """
 List all skills in central repo and their sync status across all detected platforms.
+Includes Git update status check.
 """
 
 import json
+import subprocess
 from pathlib import Path
 
 # Import central configuration
 import config
+
+
+def check_git_remote_status(repo_path: Path) -> str:
+    """
+    Check if a git repo has updates available.
+    Returns: 'up_to_date', 'update_available', 'diverged', 'error', 'not_git'
+    """
+    git_dir = repo_path / ".git"
+    if not git_dir.exists():
+        return "not_git"
+
+    try:
+        # Fetch remote updates (quietly)
+        subprocess.run(
+            ["git", "fetch"],
+            cwd=str(repo_path),
+            check=True,
+            capture_output=True,
+            timeout=10,
+        )
+
+        # Check status relative to upstream
+        # @{u} refers to the upstream branch (e.g. origin/main)
+        status = subprocess.run(
+            ["git", "status", "-uno"],
+            cwd=str(repo_path),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        output = status.stdout
+
+        if "Your branch is up to date" in output:
+            return "up_to_date"
+        elif "Your branch is behind" in output:
+            return "update_available"
+        elif "have diverged" in output:
+            return "diverged"
+        else:
+            # Could be ahead, or something else
+            return "up_to_date"
+
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return "error"
 
 
 def check_path_status(path: Path, expected_source: Path = None) -> tuple[str, str]:
@@ -68,6 +115,7 @@ def list_all_skills():
     # Count stats
     in_repo = 0
     synced_count = 0
+    updates_available = 0
 
     print(f"📚 All Skills ({len(all_skills)} total)\n")
     print("=" * 80)
@@ -75,11 +123,21 @@ def list_all_skills():
     for skill_name in sorted(all_skills):
         repo_path = config.SKILL_REPO / skill_name
         repo_exists = repo_path.exists()
+        update_status_str = ""
 
         if repo_exists:
             in_repo += 1
+            # Check for git updates
+            git_status = check_git_remote_status(repo_path)
+            if git_status == "update_available":
+                update_status_str = " ⬇️  Update Available"
+                updates_available += 1
+            elif git_status == "diverged":
+                update_status_str = " ⚠️  Diverged"
+            elif git_status == "error":
+                update_status_str = " ❓ Git Error"
 
-        print(f"\n📦 {skill_name}")
+        print(f"\n📦 {skill_name}{update_status_str}")
 
         # Central Repo status
         if repo_exists:
@@ -109,6 +167,10 @@ def list_all_skills():
     print(f"   Total skills:     {len(all_skills)}")
     print(f"   In central repo:  {in_repo}")
     print(f"   Synced to 1+ platforms: {synced_count}")
+    if updates_available > 0:
+        print(
+            f"   Updates available: {updates_available} (Run 'python3 scripts/update_skills.py')"
+        )
 
     # Show paths
     print(f"\n📍 Available Platform Paths:")

@@ -1,25 +1,27 @@
 #!/usr/bin/env python3
 """
 List all skills in central repo and their sync status across all detected platforms.
-Includes Git update status check.
+Includes Git update status check (Parallelized).
 """
 
 import json
 import subprocess
+import concurrent.futures
 from pathlib import Path
 
 # Import central configuration
 import config
 
 
-def check_git_remote_status(repo_path: Path) -> str:
+def check_git_remote_status(repo_path: Path) -> tuple[str, str]:
     """
     Check if a git repo has updates available.
-    Returns: 'up_to_date', 'update_available', 'diverged', 'error', 'not_git'
+    Returns: (status_code, status_message)
+    status_code: 'up_to_date', 'update_available', 'diverged', 'error', 'not_git'
     """
     git_dir = repo_path / ".git"
     if not git_dir.exists():
-        return "not_git"
+        return "not_git", ""
 
     try:
         # Fetch remote updates (quietly)
@@ -31,30 +33,44 @@ def check_git_remote_status(repo_path: Path) -> str:
             timeout=10,
         )
 
-        # Check status relative to upstream
-        # @{u} refers to the upstream branch (e.g. origin/main)
-        status = subprocess.run(
-            ["git", "status", "-uno"],
+        # Check raw commits behind using rev-list
+        # HEAD..@{u} means commits in upstream but not in HEAD
+        result = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD..@{u}"],
             cwd=str(repo_path),
             check=True,
             capture_output=True,
             text=True,
         )
 
-        output = status.stdout
+        behind_count = int(result.stdout.strip())
 
-        if "Your branch is up to date" in output:
-            return "up_to_date"
-        elif "Your branch is behind" in output:
-            return "update_available"
-        elif "have diverged" in output:
-            return "diverged"
-        else:
-            # Could be ahead, or something else
-            return "up_to_date"
+        if behind_count > 0:
+            return "update_available", f" ⬇️  {behind_count} commits behind"
 
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return "error"
+        # Also check if we are ahead (unpushed changes)
+        result_ahead = subprocess.run(
+            ["git", "rev-list", "--count", "@{u}..HEAD"],
+            cwd=str(repo_path),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        ahead_count = int(result_ahead.stdout.strip())
+
+        if ahead_count > 0:
+            return "up_to_date", f" ⬆️  {ahead_count} commits ahead"
+
+        return "up_to_date", " ✅ Up to date"
+
+    except subprocess.CalledProcessError:
+        # Fallback or strict error
+        # Maybe no upstream configured?
+        return "error", " ❓ Git Error (No upstream?)"
+    except subprocess.TimeoutExpired:
+        return "error", " ⏱️  Timeout"
+    except Exception:
+        return "error", " ❓ Error"
 
 
 def check_path_status(path: Path, expected_source: Path = None) -> tuple[str, str]:
@@ -105,37 +121,48 @@ def list_all_skills():
     """List all skills with their sync status across all platforms."""
     available_platforms = config.get_available_platforms()
     metadata = config.load_metadata()
-    all_skills = discover_all_skills(available_platforms)
+    all_skills = sorted(list(discover_all_skills(available_platforms)))
 
     if not all_skills:
         print("📭 No skills found.")
         print(f"\nCentral Repo: {config.SKILL_REPO}")
         return
 
+    # Prepare parallel git verification
+    # We only check git status for folders in the repo
+    git_check_futures = {}
+    repo_skills = []
+
+    print(f"📚 All Skills ({len(all_skills)} total)\n")
+    print("=" * 80)
+
+    # Start git checks in background
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for skill_name in all_skills:
+            repo_path = config.SKILL_REPO / skill_name
+            if repo_path.exists():
+                git_check_futures[skill_name] = executor.submit(
+                    check_git_remote_status, repo_path
+                )
+
     # Count stats
     in_repo = 0
     synced_count = 0
     updates_available = 0
 
-    print(f"📚 All Skills ({len(all_skills)} total)\n")
-    print("=" * 80)
-
-    for skill_name in sorted(all_skills):
+    for skill_name in all_skills:
         repo_path = config.SKILL_REPO / skill_name
         repo_exists = repo_path.exists()
         update_status_str = ""
 
         if repo_exists:
             in_repo += 1
-            # Check for git updates
-            git_status = check_git_remote_status(repo_path)
-            if git_status == "update_available":
-                update_status_str = " ⬇️  Update Available"
-                updates_available += 1
-            elif git_status == "diverged":
-                update_status_str = " ⚠️  Diverged"
-            elif git_status == "error":
-                update_status_str = " ❓ Git Error"
+            # Retrieve git status from future
+            if skill_name in git_check_futures:
+                status_code, status_msg = git_check_futures[skill_name].result()
+                if status_code == "update_available":
+                    updates_available += 1
+                update_status_str = status_msg
 
         print(f"\n📦 {skill_name}{update_status_str}")
 

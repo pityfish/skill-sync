@@ -3,12 +3,14 @@
 Update all Git-based skills in the central repository.
 Checks if directories are git repos and runs git pull.
 Supports selective updates and interactive menu.
+Includes parallel processing and detailed status.
 """
 
 import os
 import sys
 import argparse
 import subprocess
+import concurrent.futures
 from pathlib import Path
 
 # Import central configuration
@@ -23,9 +25,13 @@ def get_git_repo_status(repo_path: Path) -> str:
     return "git"
 
 
-def check_updates_available(repo_path: Path) -> bool:
-    """Check if updates are available for a repo."""
+def check_updates_available(repo_path: Path) -> tuple[bool, str]:
+    """
+    Check if updates are available for a repo.
+    Returns (has_updates, detail_string)
+    """
     try:
+        # Fetch remote updates (quietly)
         subprocess.run(
             ["git", "fetch"],
             cwd=str(repo_path),
@@ -33,16 +39,41 @@ def check_updates_available(repo_path: Path) -> bool:
             capture_output=True,
             timeout=10,
         )
-        status = subprocess.run(
-            ["git", "status", "-uno"],
+
+        # Check raw commits behind using rev-list
+        result = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD..@{u}"],
             cwd=str(repo_path),
             check=True,
             capture_output=True,
             text=True,
         )
-        return "Your branch is behind" in status.stdout
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return False
+
+        behind_count = int(result.stdout.strip())
+
+        if behind_count > 0:
+            return True, f"⬇️  {behind_count} new commits"
+
+        # Check if ahead
+        result_ahead = subprocess.run(
+            ["git", "rev-list", "--count", "@{u}..HEAD"],
+            cwd=str(repo_path),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        ahead_count = int(result_ahead.stdout.strip())
+
+        if ahead_count > 0:
+            return False, f"⬆️  {ahead_count} commits ahead"
+
+        return False, "✅ Up to date"
+
+    except (subprocess.CalledProcessError, ValueError):
+        # If no upstream, or not a repo
+        return False, "❓ Git Error (No upstream?)"
+    except subprocess.TimeoutExpired:
+        return False, "⏱️  Timeout"
 
 
 def update_git_repo(repo_path: Path) -> str:
@@ -88,16 +119,23 @@ def ask_skills_to_update(skills):
     """Interactive menu to select skills."""
     print("\n📦 Select skills to update:")
 
-    # Check updates first to be helpful
     updateable_skills = []
     other_skills = []
 
-    print("   Checking for updates...")
+    print("   Checking for updates (parallel)...")
+
+    # Run checks in parallel
+    futures = {}
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for name, path in skills:
+            futures[name] = executor.submit(check_updates_available, path)
+
     for name, path in skills:
-        if check_updates_available(path):
-            updateable_skills.append((name, path))
+        has_update, status_msg = futures[name].result()
+        if has_update:
+            updateable_skills.append((name, path, status_msg))
         else:
-            other_skills.append((name, path))
+            other_skills.append((name, path, status_msg))
 
     all_options = updateable_skills + other_skills
 
@@ -105,12 +143,22 @@ def ask_skills_to_update(skills):
         print("   No git-based skills found.")
         return []
 
-    for i, (name, path) in enumerate(all_options, 1):
-        status = " (Update Available)" if i <= len(updateable_skills) else ""
-        print(f"   {i}. {name}{status}")
+    # Display Menu
+    print("\n   [Updateable]")
+    if not updateable_skills:
+        print("   (None)")
+
+    for i, (name, path, msg) in enumerate(updateable_skills, 1):
+        print(f"   {i}. {name:20} [{msg}]")
+
+    print("\n   [Others]")
+    offset = len(updateable_skills)
+    for i, (name, path, msg) in enumerate(other_skills, 1):
+        idx = offset + i
+        print(f"   {idx}. {name:20} [{msg}]")
 
     all_idx = len(all_options) + 1
-    print(f"   {all_idx}. All skills")
+    print(f"\n   {all_idx}. All skills")
 
     choice = input(f"\nEnter choice (e.g. '1,2' or '{all_idx}'): ").strip()
 
@@ -118,10 +166,10 @@ def ask_skills_to_update(skills):
         return []
 
     if str(all_idx) in choice or "all" in choice.lower():
-        return [path for name, path in all_options]
+        return [path for name, path, msg in all_options]
 
     selected_paths = []
-    for i, (name, path) in enumerate(all_options, 1):
+    for i, (name, path, msg) in enumerate(all_options, 1):
         if str(i) in choice.split(","):
             selected_paths.append(path)
 

@@ -39,7 +39,7 @@ Once this skill is installed, you can ask your AI assistant (e.g., Claude, Gemin
 
 **Update Skills**
 > "Update all my Git-based skills" (uses `--all`)
-> "Check for skill updates" (interactive menu)
+> "Check for skill updates" (interactive menu with commit counts)
 > "Update the 'web-search' skill only"
 
 **Uninstall a Skill**

@@ -90,7 +90,8 @@ python3 scripts/update_skills.py [skill-name ...] [--all]
 ```
 
 **Features**:
-- **Status Check**: automatically checks for remote updates before prompting.
+- **Parallel Check**: Rapidly checks git status for all skills concurrently.
+- **Detailed Status**: Shows if updates are available and how many commits behind.
 - **Selective Update**: Interactive menu to choose which skills to update (if no args provided).
 - **Specific Update**: `python3 scripts/update_skills.py my-skill`
 - **Update All**: `python3 scripts/update_skills.py --all`

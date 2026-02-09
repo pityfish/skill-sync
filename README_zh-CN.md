@@ -39,7 +39,7 @@ python3 skill-sync/scripts/install_skill.py ./skill-sync
 
 **更新技能**
 > "更新所有通过 Git 安装的技能" (对应 `--all` 模式)
-> "检查技能更新" (交互式菜单)
+> "检查技能更新" (带提交数的交互式菜单)
 > "只更新 'web-search' 这个技能"
 
 **卸载技能**

@@ -1,11 +1,11 @@
 ---
 name: skill-sync
-description: Cross-platform skill synchronization tool. Installs skills to central repo (~/.skill_repo/) and creates symlinks to Gemini, Claude Code, and Antigravity. Supports interactive platform selection, conflict detection, and sync status tracking.
+description: Cross-platform skill synchronization tool. Installs skills to central repo (~/.skill_repo/) and dynamically syncs to detected AI platforms (Claude, GitHub Copilot, Cursor, Gemini, etc.). Supports interactive platform selection, system scanning, conflict detection, and sync status tracking.
 ---
 
 # Skill Sync
 
-Cross-platform skill synchronization tool that manages skills in a central repository and syncs to multiple AI platforms via symbolic links.
+Cross-platform skill synchronization tool that manages skills in a central repository and syncs to multiple AI platforms via symbolic links. It automatically scans your system to detect which platforms you use.
 
 ## Architecture
 
@@ -15,10 +15,26 @@ Cross-platform skill synchronization tool that manages skills in a central repos
     ├── another-skill/
     └── .skill_sync_metadata.json
 
-~/.gemini/skills/                 ← Symlink → ~/.skill_repo/
 ~/.claude/skills/                 ← Symlink → ~/.skill_repo/
-~/.gemini/antigravity/skills/     ← Symlink → ~/.skill_repo/
+~/.github/skills/                 ← Symlink → ~/.skill_repo/ (Copilot)
+~/.cursor/skills/                 ← Symlink → ~/.skill_repo/
+~/.gemini/antigravity/skills/     ← Symlink → ~/.skill_repo/ (Antigravity)
+...and others
 ```
+
+## Supported Platforms
+
+The tool automatically detects if any of the following platforms are installed:
+- Claude Code (`~/.claude/skills`)
+- GitHub Copilot (`~/.copilot/skills`)
+- Google Antigravity (`~/.gemini/antigravity/skills`)
+- Cursor (`~/.cursor/skills`)
+- OpenCode (`~/.config/opencode/skill`)
+- OpenAI Codex (`~/.codex/skills`)
+- Gemini CLI (`~/.gemini/skills`)
+- Windsurf (`~/.codeium/windsurf/skills`)
+- Qwen Code (`~/.qwen/skills`)
+- Qoder (`~/.qoder/skills`)
 
 ## Core Scripts
 
@@ -28,7 +44,7 @@ Install a skill to central repo and sync to selected platforms.
 
 **Usage**:
 ```bash
-python3 ~/.claude/skills/skill-sync/scripts/install_skill.py <path-to-skill>
+python3 scripts/install_skill.py <path-to-skill>
 ```
 
 **Supported inputs**:
@@ -38,22 +54,22 @@ python3 ~/.claude/skills/skill-sync/scripts/install_skill.py <path-to-skill>
 
 **Workflow**:
 1. Extract skill name from path or filename
-2. Check for conflicts in repo and platforms
-3. Ask user confirmation if conflicts exist
-4. Install to `~/.skill_repo/` (central)
-5. Ask user which platforms to enable (interactive selection)
-6. Create symlinks to selected platforms
-7. Update sync metadata
+2. **Scan system** for available AI platforms
+3. Check for conflicts in repo and discovered platforms
+4. Ask user confirmation if conflicts exist
+5. Install to `~/.skill_repo/` (central)
+6. Ask user which detected platforms to enable (interactive selection)
+7. Create symlinks to selected platforms
+8. Update sync metadata
 
-**Platform Selection Menu**:
+**Platform Selection Menu (Dynamic)**:
 ```
-🔗 Select platforms to enable this skill:
-   1. Gemini (~/.gemini/skills)
-   2. Claude Code (~/.claude/skills)
-   3. Google Antigravity (~/.gemini/antigravity/skills)
-   4. All (default)
+🔗 Detected platforms. Select which to enable this skill:
+   1. Claude Code (~/.claude/skills)
+   2. Gemini CLI (~/.gemini/skills)
+   3. All detected (default)
 
-Enter choice (e.g. '1,2' or '4'):
+Enter choice (e.g. '1' or '3'):
 ```
 
 **Examples**:
@@ -71,11 +87,11 @@ python3 ~/.claude/skills/skill-sync/scripts/install_skill.py ./awesome-skill/
 
 ### 2. List All Skills (`list_synced.py`)
 
-Display all skills in central repo and their sync status across all platforms.
+Display all skills in central repo and their sync status across all detected platforms.
 
 **Usage**:
 ```bash
-python3 ~/.claude/skills/skill-sync/scripts/list_synced.py
+python3 scripts/list_synced.py
 ```
 
 **Status Icons**:
@@ -119,7 +135,7 @@ Remove a skill from selected locations with interactive selection.
 
 **Usage**:
 ```bash
-python3 ~/.claude/skills/skill-sync/scripts/uninstall_skill.py <skill-name>
+python3 scripts/uninstall_skill.py <skill-name>
 ```
 
 **Workflow**:
@@ -153,20 +169,6 @@ python3 ~/.claude/skills/skill-sync/scripts/uninstall_skill.py pdf-editor
 ## Metadata Tracking
 
 Sync status stored in: `~/.skill_repo/.skill_sync_metadata.json`
-
-**Format**:
-```json
-{
-  "skill-name": {
-    "source": "/Users/user/.skill_repo/skill-name",
-    "targets": [
-      "/Users/user/.gemini/skills/skill-name",
-      "/Users/user/.claude/skills/skill-name",
-      "/Users/user/.gemini/antigravity/skills/skill-name"
-    ]
-  }
-}
-```
 
 ## Integration with AI Workflows
 

@@ -8,40 +8,8 @@ import json
 import shutil
 from pathlib import Path
 
-
-# Central Skill Repository
-SKILL_REPO = Path.home() / ".skill_repo"
-
-# Platform skill directories
-GEMINI_SKILLS = Path.home() / ".gemini" / "skills"
-CLAUDE_SKILLS = Path.home() / ".claude" / "skills"
-ANTIGRAVITY_SKILLS = Path.home() / ".gemini" / "antigravity" / "skills"
-
-# Metadata file
-SYNC_METADATA = SKILL_REPO / ".skill_sync_metadata.json"
-
-# Platform mapping
-PLATFORMS = {
-    'repo': SKILL_REPO,
-    'gemini': GEMINI_SKILLS,
-    'claude': CLAUDE_SKILLS,
-    'antigravity': ANTIGRAVITY_SKILLS
-}
-
-
-def load_metadata():
-    """Load sync metadata from file."""
-    if SYNC_METADATA.exists():
-        with open(SYNC_METADATA, 'r') as f:
-            return json.load(f)
-    return {}
-
-
-def save_metadata(metadata):
-    """Save sync metadata to file."""
-    SYNC_METADATA.parent.mkdir(parents=True, exist_ok=True)
-    with open(SYNC_METADATA, 'w') as f:
-        json.dump(metadata, f, indent=2)
+# Import central configuration
+import config
 
 
 def remove_path(path: Path) -> bool:
@@ -59,18 +27,30 @@ def remove_path(path: Path) -> bool:
     return False
 
 
-def get_skill_locations(skill_name: str) -> dict:
+def get_skill_locations(skill_name: str, available_platforms: dict) -> dict:
     """Get all locations where skill exists."""
     locations = {}
 
-    for name, base_path in PLATFORMS.items():
-        path = base_path / skill_name
+    # Check Central Repo
+    repo_path = config.SKILL_REPO / skill_name
+    if repo_path.exists() or repo_path.is_symlink():
+        locations["repo"] = {
+            "name": "Central Repo",
+            "path": repo_path,
+            "is_symlink": repo_path.is_symlink(),
+            "target": repo_path.resolve() if repo_path.is_symlink() else None,
+        }
+
+    # Check all available platforms
+    for p_id, info in available_platforms.items():
+        path = info["path"] / skill_name
         if path.exists() or path.is_symlink():
             is_symlink = path.is_symlink()
-            locations[name] = {
-                'path': path,
-                'is_symlink': is_symlink,
-                'target': path.resolve() if is_symlink else None
+            locations[p_id] = {
+                "name": info["name"],
+                "path": path,
+                "is_symlink": is_symlink,
+                "target": path.resolve() if is_symlink else None,
             }
 
     return locations
@@ -80,93 +60,68 @@ def ask_uninstall_targets(locations: dict) -> list[str]:
     """Ask user which locations to uninstall from."""
     print("\n🗑️  Select locations to remove:")
 
-    options = []
-    idx = 1
+    p_ids = list(locations.keys())
+    for i, p_id in enumerate(p_ids, 1):
+        info = locations[p_id]
+        type_str = "symlink" if info["is_symlink"] else "directory"
+        print(f"   {i}. {info['name']} [{type_str}]")
 
-    # Always show repo first if exists
-    if 'repo' in locations:
-        info = locations['repo']
-        type_str = "symlink" if info['is_symlink'] else "directory"
-        print(f"   {idx}. Central Repo (~/.skill_repo) [{type_str}]")
-        options.append(('repo', idx))
-        idx += 1
+    all_idx = len(p_ids) + 1
+    print(f"   {all_idx}. All locations")
 
-    # Then show platforms
-    for name in ['gemini', 'claude', 'antigravity']:
-        if name in locations:
-            info = locations[name]
-            type_str = "symlink" if info['is_symlink'] else "directory"
-            display_name = {
-                'gemini': 'Gemini (~/.gemini/skills)',
-                'claude': 'Claude Code (~/.claude/skills)',
-                'antigravity': 'Antigravity (~/.gemini/antigravity/skills)'
-            }[name]
-            print(f"   {idx}. {display_name} [{type_str}]")
-            options.append((name, idx))
-            idx += 1
-
-    print(f"   {idx}. All locations")
-
-    choice = input(f"\nEnter choice (e.g. '1,2' or '{idx}' for all): ").strip()
+    choice = input(f"\nEnter choice (e.g. '1,2' or '{all_idx}' for all): ").strip()
 
     if not choice:
         return []
 
-    targets = []
+    selected_ids = []
 
     # Handle 'all' case
-    if str(idx) in choice or 'all' in choice.lower():
-        return [name for name, _ in options]
+    if str(all_idx) in choice or "all" in choice.lower():
+        return p_ids
 
-    # Parse individual choices
-    for name, opt_idx in options:
-        if str(opt_idx) in choice:
-            targets.append(name)
+    for i, p_id in enumerate(p_ids, 1):
+        if str(i) in choice.split(","):
+            selected_ids.append(p_id)
 
-    return targets
+    return selected_ids
 
 
-def uninstall_skill(skill_name: str, targets: list[str]):
+def uninstall_skill(skill_name: str, selected_ids: list[str], locations: dict):
     """Uninstall skill from specified locations."""
-    metadata = load_metadata()
+    metadata = config.load_metadata()
 
     print(f"\n🗑️  Removing '{skill_name}'...\n")
 
     removed_any = False
 
-    for target in targets:
-        path = PLATFORMS[target] / skill_name
-
-        display_name = {
-            'repo': 'Central Repo',
-            'gemini': 'Gemini',
-            'claude': 'Claude Code',
-            'antigravity': 'Antigravity'
-        }[target]
+    for p_id in selected_ids:
+        info = locations[p_id]
+        path = info["path"]
 
         if remove_path(path):
-            print(f"   ✅ Removed from {display_name}: {path}")
+            print(f"   ✅ Removed from {info['name']}: {path}")
             removed_any = True
         else:
-            print(f"   ⚠️  Not found in {display_name}: {path}")
+            print(f"   ⚠️  Not found in {info['name']}: {path}")
 
     # Update metadata
     if skill_name in metadata:
         # If repo is removed, delete entire entry
-        if 'repo' in targets:
+        if "repo" in selected_ids:
             del metadata[skill_name]
             print(f"\n   ✅ Removed from sync metadata")
         else:
-            # Otherwise, just update targets list
+            # Otherwise, just update targets list by checking what's still there
             remaining_targets = []
-            for t in metadata[skill_name].get('targets', []):
+            for t in metadata[skill_name].get("targets", []):
                 t_path = Path(t)
-                if t_path.exists():
+                if t_path.exists() or t_path.is_symlink():
                     remaining_targets.append(t)
-            metadata[skill_name]['targets'] = remaining_targets
+            metadata[skill_name]["targets"] = remaining_targets
             print(f"\n   ✅ Updated sync metadata")
 
-        save_metadata(metadata)
+        config.save_metadata(metadata)
 
     if removed_any:
         print(f"\n✅ Uninstall complete!")
@@ -177,41 +132,44 @@ def uninstall_skill(skill_name: str, targets: list[str]):
 def main():
     if len(sys.argv) < 2:
         print("Usage: uninstall_skill.py <skill-name>")
-        print("\nExample:")
-        print("  uninstall_skill.py my-skill")
         sys.exit(1)
 
     skill_name = sys.argv[1]
 
+    # Get available platforms (to check for skill existence)
+    available_platforms = config.get_available_platforms()
+
     # Find where skill exists
-    locations = get_skill_locations(skill_name)
+    locations = get_skill_locations(skill_name, available_platforms)
 
     if not locations:
         print(f"❌ Skill '{skill_name}' not found in any location.")
         sys.exit(1)
 
     print(f"📦 Found skill '{skill_name}' in {len(locations)} location(s):")
-    for name, info in locations.items():
-        type_str = "symlink" if info['is_symlink'] else "directory"
-        target_info = f" → {info['target']}" if info['is_symlink'] else ""
-        print(f"   - {name}: {info['path']} [{type_str}{target_info}]")
+    for p_id, info in locations.items():
+        type_str = "symlink" if info["is_symlink"] else "directory"
+        target_info = f" → {info['target']}" if info["is_symlink"] else ""
+        print(f"   - {info['name']}: {info['path']} [{type_str}{target_info}]")
 
     # Ask which to uninstall
-    targets = ask_uninstall_targets(locations)
+    selected_ids = ask_uninstall_targets(locations)
 
-    if not targets:
+    if not selected_ids:
         print("\n❌ No locations selected. Uninstall cancelled.")
         sys.exit(0)
 
     # Confirm
-    print(f"\n⚠️  Will remove from: {', '.join(targets)}")
+    print(
+        f"\n⚠️  Will remove from: {', '.join([locations[pid]['name'] for pid in selected_ids])}"
+    )
     response = input("Confirm? [y/N]: ").strip().lower()
 
-    if response != 'y':
+    if response != "y":
         print("❌ Uninstall cancelled.")
         sys.exit(0)
 
-    uninstall_skill(skill_name, targets)
+    uninstall_skill(skill_name, selected_ids, locations)
 
 
 if __name__ == "__main__":

@@ -1,37 +1,13 @@
 #!/usr/bin/env python3
 """
-List all skills in central repo and their sync status across all platforms.
+List all skills in central repo and their sync status across all detected platforms.
 """
 
 import json
 from pathlib import Path
 
-
-# Central Skill Repository
-SKILL_REPO = Path.home() / ".skill_repo"
-
-# Platform skill directories
-GEMINI_SKILLS = Path.home() / ".gemini" / "skills"
-CLAUDE_SKILLS = Path.home() / ".claude" / "skills"
-ANTIGRAVITY_SKILLS = Path.home() / ".gemini" / "antigravity" / "skills"
-
-# Metadata file
-SYNC_METADATA = SKILL_REPO / ".skill_sync_metadata.json"
-
-# Platform mapping
-PLATFORMS = {
-    'gemini': GEMINI_SKILLS,
-    'claude': CLAUDE_SKILLS,
-    'antigravity': ANTIGRAVITY_SKILLS
-}
-
-
-def load_metadata():
-    """Load sync metadata from file."""
-    if SYNC_METADATA.exists():
-        with open(SYNC_METADATA, 'r') as f:
-            return json.load(f)
-    return {}
+# Import central configuration
+import config
 
 
 def check_path_status(path: Path, expected_source: Path = None) -> tuple[str, str]:
@@ -48,28 +24,31 @@ def check_path_status(path: Path, expected_source: Path = None) -> tuple[str, st
             return "⚠️ ", "Broken symlink"
 
         if expected_source and target == expected_source:
-            return "✅", f"Synced → {target}"
+            return "✅", f"Synced"
         else:
             return "🔗", f"Linked → {target}"
     else:
         return "📁", "Local directory (not synced)"
 
 
-def discover_all_skills() -> set[str]:
-    """Discover all skills from repo and all platforms."""
+def discover_all_skills(available_platforms: dict) -> set[str]:
+    """Discover all skills from repo and all available platforms."""
     skills = set()
 
     # From central repo
-    if SKILL_REPO.exists():
-        for item in SKILL_REPO.iterdir():
-            if item.is_dir() and not item.name.startswith('.'):
+    if config.SKILL_REPO.exists():
+        for item in config.SKILL_REPO.iterdir():
+            if item.is_dir() and not item.name.startswith("."):
                 skills.add(item.name)
 
-    # From all platforms
-    for platform_path in PLATFORMS.values():
+    # From all available platforms
+    for p_id, info in available_platforms.items():
+        platform_path = info["path"]
         if platform_path.exists():
             for item in platform_path.iterdir():
-                if (item.is_dir() or item.is_symlink()) and not item.name.startswith('.'):
+                if (item.is_dir() or item.is_symlink()) and not item.name.startswith(
+                    "."
+                ):
                     skills.add(item.name)
 
     return skills
@@ -77,13 +56,13 @@ def discover_all_skills() -> set[str]:
 
 def list_all_skills():
     """List all skills with their sync status across all platforms."""
-    metadata = load_metadata()
-    all_skills = discover_all_skills()
+    available_platforms = config.get_available_platforms()
+    metadata = config.load_metadata()
+    all_skills = discover_all_skills(available_platforms)
 
     if not all_skills:
         print("📭 No skills found.")
-        print(f"\nCentral Repo: {SKILL_REPO}")
-        print(f"Metadata: {SYNC_METADATA}")
+        print(f"\nCentral Repo: {config.SKILL_REPO}")
         return
 
     # Count stats
@@ -94,7 +73,7 @@ def list_all_skills():
     print("=" * 80)
 
     for skill_name in sorted(all_skills):
-        repo_path = SKILL_REPO / skill_name
+        repo_path = config.SKILL_REPO / skill_name
         repo_exists = repo_path.exists()
 
         if repo_exists:
@@ -112,17 +91,11 @@ def list_all_skills():
         expected_source = repo_path if repo_exists else None
         platforms_synced = 0
 
-        for platform_name, platform_path in PLATFORMS.items():
-            skill_path = platform_path / skill_name
+        for p_id, info in available_platforms.items():
+            skill_path = info["path"] / skill_name
             icon, desc = check_path_status(skill_path, expected_source)
 
-            display_name = {
-                'gemini': 'Gemini',
-                'claude': 'Claude',
-                'antigravity': 'Antigravity'
-            }[platform_name]
-
-            print(f"   {display_name:12} {icon} {desc}")
+            print(f"   {info['name']:18} {icon} {desc}")
 
             if icon == "✅":
                 platforms_synced += 1
@@ -138,12 +111,10 @@ def list_all_skills():
     print(f"   Synced to 1+ platforms: {synced_count}")
 
     # Show paths
-    print(f"\n📍 Paths:")
-    print(f"   Central Repo:  {SKILL_REPO}")
-    print(f"   Gemini:        {GEMINI_SKILLS}")
-    print(f"   Claude Code:   {CLAUDE_SKILLS}")
-    print(f"   Antigravity:   {ANTIGRAVITY_SKILLS}")
-    print(f"   Metadata:      {SYNC_METADATA}")
+    print(f"\n📍 Available Platform Paths:")
+    print(f"   Central Repo:  {config.SKILL_REPO}")
+    for p_id, info in available_platforms.items():
+        print(f"   {info['name']:15}: {info['path']}")
 
 
 def main():

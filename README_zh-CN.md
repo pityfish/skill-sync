@@ -2,12 +2,12 @@
 
 [English](./README.md) | [简体中文](./README_zh-CN.md)
 
-**Skill Sync** 帮助你在一个中心仓库中管理你的 AI Agent 技能，并将其同步到多个平台（Gemini, Claude Code, Google Antigravity）。
+**Skill Sync** 旨在帮助你从一个中央仓库管理并同步你的 AI 智能体技能（Skill）到多个平台（Claude, GitHub Copilot, Cursor, Gemini 等）。
 
 ## 安装
 
-### 方法 1: 引导安装 (推荐)
-你可以使用包含的脚本将 `skill-sync` 本身作为一个技能安装到你的系统中。
+### 方法一：引导式安装（推荐）
+你可以使用内置脚本将 `skill-sync` 本身作为一个技能安装到你的系统中。
 
 ```bash
 # 1. 克隆仓库
@@ -17,16 +17,16 @@ git clone https://github.com/pityfish/skill-sync.git
 python3 skill-sync/scripts/install_skill.py ./skill-sync
 ```
 
-这将执行以下操作：
-- 将 `skill-sync` 注册到你的中心技能仓库 (`~/.skill_repo`)。
-- 为你活跃的 AI 助手（Gemini, Claude, Antigravity）创建软链接。
+这将涉及：
+- 在你的中央技能仓库 (`~/.skill_repo`) 中注册 `skill-sync`。
+- 自动检测已安装的 AI 助手并创建符号链接。
 
-### 方法 2: 手动安装
-手动复制或软链接此目录到你的 Agent 技能目录（例如 `~/.gemini/antigravity/skills/`）。
+### 方法二：手动安装
+手动将此目录复制或链接到你的智能体技能目录中。
 
 ## 使用方法
 
-安装完成后，你可以使用自然语言要求你的 AI 助手管理你的技能。
+安装完成后，你可以通过自然语言要求你的 AI 助手管理你的技能。
 
 **示例：**
 - "安装位于 `./pdf-tools/` 的技能"
@@ -35,15 +35,26 @@ python3 skill-sync/scripts/install_skill.py ./skill-sync
 - "卸载 `deprecated-skill`"
 
 ## 功能特性
-- **集中管理**：在 `~/.skill_repo/` 中保留一份技能副本。
-- **多平台同步**：自动同步到 Gemini, Claude 和 Antigravity。
-- **冲突预防**：在覆盖前检查是否存在现有文件。
+- **中央化管理**：在 `~/.skill_repo/` 中保留一份技能副本。
+- **多平台同步**：自动同步到 Claude, Copilot, Cursor, Gemini 等。
+- **自动检测**：扫描你的系统以发现你已安装的工具。
+- **冲突预防**：在覆盖前检查现有文件。
 
-## 支持环境
+## 支持的环境
 
-- **操作系统**: macOS, Linux (需要支持软链接)
+- **操作系统**: macOS, Linux (需要支持符号链接)
 - **Python**: 3.9 或更高版本
-- **支持的 Agent**:
-    - Google Gemini (~/.gemini)
-    - Claude Code (~/.claude)
-    - Google Antigravity (~/.gemini/antigravity)
+- **支持的平台**:
+
+| 平台 | 项目目录 (Local) | 系统目录 (Global) |
+| :--- | :--- | :--- |
+| **Claude Code** | `.claude/skills` | `~/.claude/skills` |
+| **GitHub Copilot** | `.github/skills` | `~/.copilot/skills` |
+| **Google Antigravity** | `.agent/skills` | `~/.gemini/antigravity/skills` |
+| **Cursor** | `.cursor/skills` | `~/.cursor/skills` |
+| **OpenCode** | `.opencode/skill` | `~/.config/opencode/skill` |
+| **OpenAI Codex** | `.codex/skills` | `~/.codex/skills` |
+| **Gemini CLI** | `.gemini/skills` | `~/.gemini/skills` |
+| **Windsurf** | `.windsurf/skills` | `~/.codeium/windsurf/skills` |
+| **Qwen Code** | `.qwen/skills` | `~/.qwen/skills` |
+| **Qoder** | `.qoder/skills` | `~/.qoder/skills` |

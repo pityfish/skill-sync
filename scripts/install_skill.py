@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Install a skill to ~/.skill_repo and sync to Gemini, Claude Code, and Antigravity via symlinks.
+Install a skill to ~/.skill_repo and sync to detected platforms via symlinks.
 """
 
 import os
@@ -10,38 +10,14 @@ import json
 from pathlib import Path
 from typing import Optional
 
-
-# Central Skill Repository
-SKILL_REPO = Path.home() / ".skill_repo"
-
-# Platform skill directories
-GEMINI_SKILLS = Path.home() / ".gemini" / "skills"
-CLAUDE_SKILLS = Path.home() / ".claude" / "skills"
-ANTIGRAVITY_SKILLS = Path.home() / ".gemini" / "antigravity" / "skills"
-
-# Metadata file to track synced skills
-SYNC_METADATA = SKILL_REPO / ".skill_sync_metadata.json"
-
-
-def load_metadata():
-    """Load sync metadata from file."""
-    if SYNC_METADATA.exists():
-        with open(SYNC_METADATA, 'r') as f:
-            return json.load(f)
-    return {}
-
-
-def save_metadata(metadata):
-    """Save sync metadata to file."""
-    SYNC_METADATA.parent.mkdir(parents=True, exist_ok=True)
-    with open(SYNC_METADATA, 'w') as f:
-        json.dump(metadata, f, indent=2)
+# Import central configuration
+import config
 
 
 def get_skill_name(skill_path: Path) -> str:
     """Extract skill name from path or SKILL.md."""
     # If it's a .skill file, use the filename
-    if skill_path.suffix == '.skill':
+    if skill_path.suffix == ".skill":
         return skill_path.stem
 
     # If it's a directory, use the directory name
@@ -58,28 +34,31 @@ def unzip_skill_file(skill_file: Path, target_dir: Path) -> Path:
     skill_name = skill_file.stem
     extract_path = target_dir / skill_name
 
-    with zipfile.ZipFile(skill_file, 'r') as zip_ref:
+    with zipfile.ZipFile(skill_file, "r") as zip_ref:
         zip_ref.extractall(extract_path)
 
     return extract_path
 
 
-def check_conflicts(skill_name: str) -> dict:
+def check_conflicts(skill_name: str, available_platforms: dict) -> dict:
     """Check if skill already exists in repo or platforms (as non-symlink)."""
     conflicts = {}
 
     # Check repo
-    if (SKILL_REPO / skill_name).exists():
-        conflicts['repo'] = SKILL_REPO / skill_name
+    if (config.SKILL_REPO / skill_name).exists():
+        conflicts["repo"] = config.SKILL_REPO / skill_name
 
-    # Check platforms for non-symlink conflicts or existing installations
-    for name, path in [('gemini', GEMINI_SKILLS), ('claude', CLAUDE_SKILLS), ('antigravity', ANTIGRAVITY_SKILLS)]:
-        target = path / skill_name
+    # Check available platforms for conflicts
+    for p_id, info in available_platforms.items():
+        target = info["path"] / skill_name
         if target.exists():
             # If it's a symlink pointing to our repo, it's not a conflict, it's just an update
-            if target.is_symlink() and target.resolve() == (SKILL_REPO / skill_name).resolve():
+            if (
+                target.is_symlink()
+                and target.resolve() == (config.SKILL_REPO / skill_name).resolve()
+            ):
                 continue
-            conflicts[name] = target
+            conflicts[info["name"]] = target
 
     return conflicts
 
@@ -94,15 +73,15 @@ def ask_user_overwrite(conflicts: dict) -> bool:
         print(f"   - {platform}: {path} ({type_str}{link_target})")
 
     response = input("\nOverwrite existing installations? [y/N]: ").strip().lower()
-    return response == 'y'
+    return response == "y"
 
 
 def install_to_repo(source_path: Path, skill_name: str, force: bool = False) -> Path:
     """Install skill to Central Skill Repo."""
-    target_path = SKILL_REPO / skill_name
+    target_path = config.SKILL_REPO / skill_name
 
     # Create repo directory if it doesn't exist
-    SKILL_REPO.mkdir(parents=True, exist_ok=True)
+    config.SKILL_REPO.mkdir(parents=True, exist_ok=True)
 
     # Remove existing if force
     if target_path.exists() and force:
@@ -112,9 +91,9 @@ def install_to_repo(source_path: Path, skill_name: str, force: bool = False) -> 
             shutil.rmtree(target_path)
 
     # Copy skill to Repo
-    if source_path.is_file() and source_path.suffix == '.skill':
+    if source_path.is_file() and source_path.suffix == ".skill":
         # Unzip .skill file
-        return unzip_skill_file(source_path, SKILL_REPO)
+        return unzip_skill_file(source_path, config.SKILL_REPO)
     else:
         # Copy directory
         # If source is same as target (re-installing from repo), skip copy
@@ -145,73 +124,78 @@ def create_symlink(source: Path, target: Path, force: bool = False):
     target.symlink_to(source)
 
 
-def ask_sync_targets() -> list[str]:
-    """Ask user which platforms to sync to."""
-    print("\n🔗 Select platforms to enable this skill:")
-    print("   1. Gemini (~/.gemini/skills)")
-    print("   2. Claude Code (~/.claude/skills)")
-    print("   3. Google Antigravity (~/.gemini/antigravity/skills)")
-    print("   4. All (default)")
+def ask_sync_targets(available_platforms: dict) -> list[str]:
+    """Ask user which platforms to sync to based on available ones."""
+    if not available_platforms:
+        print("\n⚠️  No supported platforms detected on this system.")
+        return []
 
-    choice = input("\nEnter choice (e.g. '1,2' or '4'): ").strip()
+    print("\n🔗 Detected platforms. Select which to enable this skill:")
+
+    p_ids = list(available_platforms.keys())
+    for i, p_id in enumerate(p_ids, 1):
+        info = available_platforms[p_id]
+        print(f"   {i}. {info['name']} ({info['path']})")
+
+    all_idx = len(p_ids) + 1
+    print(f"   {all_idx}. All detected (default)")
+
+    choice = input(f"\nEnter choice (e.g. '1,2' or '{all_idx}'): ").strip()
 
     if not choice:
-        choice = '4'
+        choice = str(all_idx)
 
-    targets = []
+    selected_ids = []
 
     # Handle 'all' cases
-    if '4' in choice or 'all' in choice.lower():
-        return ['gemini', 'claude', 'antigravity']
+    if str(all_idx) in choice or "all" in choice.lower():
+        return p_ids
 
-    if '1' in choice: targets.append('gemini')
-    if '2' in choice: targets.append('claude')
-    if '3' in choice: targets.append('antigravity')
+    for i, p_id in enumerate(p_ids, 1):
+        if str(i) in choice.split(","):
+            selected_ids.append(p_id)
 
-    return targets
+    return selected_ids
 
 
-def sync_to_platforms(repo_skill_path: Path, skill_name: str, targets: list[str], force: bool = False):
+def sync_to_platforms(
+    repo_skill_path: Path,
+    skill_name: str,
+    selected_ids: list[str],
+    available_platforms: dict,
+    force: bool = False,
+):
     """Create symlinks in selected platforms."""
     print(f"\n📎 Creating symlinks from {repo_skill_path}...")
 
-    if not targets:
+    if not selected_ids:
         print("   No platforms selected.")
         return
 
-    if 'gemini' in targets:
-        target = GEMINI_SKILLS / skill_name
-        create_symlink(repo_skill_path, target, force)
-        print(f"   ✅ Gemini: {target}")
-
-    if 'claude' in targets:
-        target = CLAUDE_SKILLS / skill_name
-        create_symlink(repo_skill_path, target, force)
-        print(f"   ✅ Claude Code: {target}")
-
-    if 'antigravity' in targets:
-        target = ANTIGRAVITY_SKILLS / skill_name
-        create_symlink(repo_skill_path, target, force)
-        print(f"   ✅ Antigravity: {target}")
+    for p_id in selected_ids:
+        if p_id in available_platforms:
+            info = available_platforms[p_id]
+            target = info["path"] / skill_name
+            create_symlink(repo_skill_path, target, force)
+            print(f"   ✅ {info['name']}: {target}")
 
 
-def update_sync_metadata(skill_name: str, synced_targets: list[str]):
+def update_sync_metadata(
+    skill_name: str, selected_ids: list[str], available_platforms: dict
+):
     """Update metadata file with sync information."""
-    metadata = load_metadata()
+    metadata = config.load_metadata()
 
     target_paths = []
-    if 'gemini' in synced_targets:
-        target_paths.append(str(GEMINI_SKILLS / skill_name))
-    if 'claude' in synced_targets:
-        target_paths.append(str(CLAUDE_SKILLS / skill_name))
-    if 'antigravity' in synced_targets:
-        target_paths.append(str(ANTIGRAVITY_SKILLS / skill_name))
+    for p_id in selected_ids:
+        if p_id in available_platforms:
+            target_paths.append(str(available_platforms[p_id]["path"] / skill_name))
 
     metadata[skill_name] = {
-        'source': str(SKILL_REPO / skill_name),
-        'targets': target_paths
+        "source": str(config.SKILL_REPO / skill_name),
+        "targets": target_paths,
     }
-    save_metadata(metadata)
+    config.save_metadata(metadata)
 
 
 def main():
@@ -225,18 +209,21 @@ def main():
         print(f"❌ Error: Path does not exist: {source_path}")
         sys.exit(1)
 
+    # Scan available platforms
+    available_platforms = config.get_available_platforms()
+
     # Get skill name
     skill_name = get_skill_name(source_path)
     print(f"📦 Installing skill: {skill_name}")
     print(f"   Source: {source_path}")
 
     # Check for conflicts
-    conflicts = check_conflicts(skill_name)
+    conflicts = check_conflicts(skill_name, available_platforms)
     force = False
 
     # Filter out self-conflicts if reinstalling from repo
-    if source_path == SKILL_REPO / skill_name:
-        conflicts.pop('repo', None)
+    if source_path == config.SKILL_REPO / skill_name:
+        conflicts.pop("repo", None)
 
     if conflicts:
         if not ask_user_overwrite(conflicts):
@@ -250,13 +237,13 @@ def main():
     print(f"   ✅ Stored at: {repo_path}")
 
     # Ask user which platforms to sync
-    sync_targets = ask_sync_targets()
+    sync_targets = ask_sync_targets(available_platforms)
 
     # Sync to platforms
-    sync_to_platforms(repo_path, skill_name, sync_targets, force)
+    sync_to_platforms(repo_path, skill_name, sync_targets, available_platforms, force)
 
     # Update metadata
-    update_sync_metadata(skill_name, sync_targets)
+    update_sync_metadata(skill_name, sync_targets, available_platforms)
 
     print(f"\n✅ Skill '{skill_name}' setup complete!")
 

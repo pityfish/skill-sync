@@ -26,17 +26,37 @@ Copy or symlink this directory to your agent's skill directory manually.
 
 ## Usage
 
-Once installed, you can ask your AI assistant to manage your skills using natural language.
+Once this skill is installed, you can ask your AI assistant (e.g., Claude, Gemini) to manage your skills using natural language.
 
-**Examples:**
-- "Install the skill located at `./pdf-tools/`"
-- "Sync the `web-search` skill to all platforms"
-- "List all my installed skills"
-- "Uninstall the `deprecated-skill`"
+**Install a Skill**
+> "Install the skill from https://github.com/user/awesome-skill.git"
+> "Install the local skill at ./my-new-skill/"
+> "Install this skill to the current project only" (uses `--local`)
+
+**List Skills**
+> "List all my synced skills"
+> "Check which skills are installed"
+
+**Update Skills**
+> "Update all my Git-based skills"
+> "Check for skill updates"
+
+**Uninstall a Skill**
+> "Uninstall the 'old-skill'"
+> "Remove the 'pdf-tools' skill"
+
+## Implementation Details
+Under the hood, the agent will execute the python scripts located in `scripts/`:
+- `install_skill.py`: Handles installation from local paths or Git URLs.
+- `list_synced.py`: Shows sync status across platforms.
+- `update_skills.py`: Pulls updates for Git-based skills.
+- `uninstall_skill.py`: Removes skills and symlinks.
 
 ## Features
 - **Central Management**: Keep one copy of your skills in `~/.skill_repo/`.
 - **Multi-Platform Sync**: Automatically syncs to Claude, Copilot, Cursor, Gemini, etc.
+- **Git Support**: Install directly from Git URLs and auto-update.
+- **Local Install**: Support project-level skill configuration.
 - **Auto-Detection**: Scans your system to find which tools you have installed.
 - **Conflict Prevention**: Checks for existing files before overwriting.
 

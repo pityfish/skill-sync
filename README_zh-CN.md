@@ -26,17 +26,37 @@ python3 skill-sync/scripts/install_skill.py ./skill-sync
 
 ## 使用方法
 
-安装完成后，你可以通过自然语言要求你的 AI 助手管理你的技能。
+安装此 Skill 后，您可以直接通过自然语言指示 AI 助手（如 Claude, Gemini, Antigravity）来管理您的技能库。
 
-**示例：**
-- "安装位于 `./pdf-tools/` 的技能"
-- "将 `web-search` 技能同步到所有平台"
-- "列出我所有已安装的技能"
-- "卸载 `deprecated-skill`"
+**安装技能**
+> "从 https://github.com/user/awesome-skill.git 安装这个技能"
+> "把 ./my-new-skill/ 目录下的技能安装起来"
+> "只在当前项目安装这个技能" (对应 `--local` 模式)
+
+**查看已安装技能**
+> "列出我所有已同步的技能"
+> "检查有哪些技能安装成功了"
+
+**更新技能**
+> "更新所有通过 Git 安装的技能"
+> "检查技能更新"
+
+**卸载技能**
+> "卸载 'old-skill' 这个技能"
+> "删除 'pdf-tools'"
+
+## 技术实现
+在后台，Agent 会调用 `scripts/` 目录下的 Python 脚本来完成操作：
+- `install_skill.py`: 处理本地路径或 Git URL 的安装逻辑。
+- `list_synced.py`: 展示各平台的同步状态。
+- `update_skills.py`: 拉取 Git仓库的最新更新。
+- `uninstall_skill.py`: 安全移除技能文件及软链接。
 
 ## 功能特性
 - **中央化管理**：在 `~/.skill_repo/` 中保留一份技能副本。
 - **多平台同步**：自动同步到 Claude, Copilot, Cursor, Gemini 等。
+- **Git 支持**：直接从 Git URL 安装并支持自动更新。
+- **局部安装**：支持项目级别的技能配置。
 - **自动检测**：扫描你的系统以发现你已安装的工具。
 - **冲突预防**：在覆盖前检查现有文件。
 

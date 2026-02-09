@@ -1,17 +1,46 @@
 #!/usr/bin/env python3
 """
 Install a skill to ~/.skill_repo and sync to detected platforms via symlinks.
+Supports installing from local path or Git URL, and syncing globally or locally.
 """
 
 import os
 import sys
 import shutil
 import json
+import argparse
+import tempfile
+import subprocess
 from pathlib import Path
 from typing import Optional
 
 # Import central configuration
 import config
+
+
+def get_skill_name_from_url(url: str) -> str:
+    """Extract skill name from Git URL."""
+    # Remove .git extension if present
+    name = url.split("/")[-1]
+    if name.endswith(".git"):
+        name = name[:-4]
+    return name
+
+
+def clone_git_repo(url: str, target_dir: Path) -> Path:
+    """Clone a git repository to a target directory."""
+    print(f"   ⬇️  Cloning from {url}...")
+    try:
+        # ensuring parent dir exists
+        target_dir.parent.mkdir(parents=True, exist_ok=True)
+
+        subprocess.run(
+            ["git", "clone", url, str(target_dir)], check=True, capture_output=True
+        )
+        return target_dir
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Error cloning repository: {e.stderr.decode().strip()}")
+        sys.exit(1)
 
 
 def get_skill_name(skill_path: Path) -> str:
@@ -38,6 +67,41 @@ def unzip_skill_file(skill_file: Path, target_dir: Path) -> Path:
         zip_ref.extractall(extract_path)
 
     return extract_path
+
+
+def get_platform_paths(is_local_install: bool) -> dict:
+    """
+    Get available platforms with appropriate paths.
+    If is_local_install is True, returns paths relative to CWD.
+    If False, returns global system paths.
+    """
+    if not is_local_install:
+        return config.get_available_platforms()
+
+    # improved local install scanning
+    available = {}
+    cwd = Path.cwd()
+
+    for name, conf in config.SUPPORTED_PLATFORMS.items():
+        local_rel_path = conf["local"]
+        local_full_path = cwd / local_rel_path
+
+        # We consider it available if the parent config dir exists (e.g. .claude exists for .claude/skills)
+        # OR if it's just a standard structure we want to enforce.
+        # For simplicity, let's mirror the global logic: check if parent exists.
+
+        parent_dir = local_full_path.parent
+        # Also check if parent itself exists, if local_rel_path is deep
+        # e.g. .agent/skills -> check .agent exists
+
+        if parent_dir.exists():
+            available[conf["id"]] = {
+                "name": name,
+                "path": local_full_path,
+                "is_local": True,
+            }
+
+    return available
 
 
 def check_conflicts(skill_name: str, available_platforms: dict) -> dict:
@@ -76,7 +140,9 @@ def ask_user_overwrite(conflicts: dict) -> bool:
     return response == "y"
 
 
-def install_to_repo(source_path: Path, skill_name: str, force: bool = False) -> Path:
+def install_to_repo(
+    source_path: Path, skill_name: str, force: bool = False, is_git: bool = False
+) -> Path:
     """Install skill to Central Skill Repo."""
     target_path = config.SKILL_REPO / skill_name
 
@@ -90,7 +156,15 @@ def install_to_repo(source_path: Path, skill_name: str, force: bool = False) -> 
         else:
             shutil.rmtree(target_path)
 
-    # Copy skill to Repo
+    # Copy/Move skill to Repo
+    if is_git:
+        # If it was a git clone, we already have it in a temp dir or target dir
+        # If source_path is the temp dir, move it
+        # We need to make sure we're not moving to ourselves if something weird happened
+        if source_path.resolve() != target_path.resolve():
+            shutil.move(str(source_path), str(target_path))
+        return target_path
+
     if source_path.is_file() and source_path.suffix == ".skill":
         # Unzip .skill file
         return unzip_skill_file(source_path, config.SKILL_REPO)
@@ -124,13 +198,18 @@ def create_symlink(source: Path, target: Path, force: bool = False):
     target.symlink_to(source)
 
 
-def ask_sync_targets(available_platforms: dict) -> list[str]:
+def ask_sync_targets(available_platforms: dict, is_local: bool) -> list[str]:
     """Ask user which platforms to sync to based on available ones."""
     if not available_platforms:
-        print("\n⚠️  No supported platforms detected on this system.")
+        if is_local:
+            print("\n⚠️  No local project configuration found in current directory.")
+            print("   (Expected folders like .claude, .chat, .agent, etc.)")
+        else:
+            print("\n⚠️  No supported platforms detected on this system.")
         return []
 
-    print("\n🔗 Detected platforms. Select which to enable this skill:")
+    mode_str = "Local Project" if is_local else "System Global"
+    print(f"\n🔗 Detected {mode_str} targets. Select which to enable this skill:")
 
     p_ids = list(available_platforms.keys())
     for i, p_id in enumerate(p_ids, 1):
@@ -186,66 +265,113 @@ def update_sync_metadata(
     """Update metadata file with sync information."""
     metadata = config.load_metadata()
 
-    target_paths = []
+    # We need to preserve global targets if we are installing local, and vice versa
+    # Actually, simplistic approach: just append to the list of targets if not present.
+
+    current_targets = set(metadata.get(skill_name, {}).get("targets", []))
+
+    new_targets = []
     for p_id in selected_ids:
         if p_id in available_platforms:
-            target_paths.append(str(available_platforms[p_id]["path"] / skill_name))
+            new_targets.append(str(available_platforms[p_id]["path"] / skill_name))
+
+    # Merge
+    current_targets.update(new_targets)
+
+    # Filter out non-existent
+    valid_targets = []
+    for t in current_targets:
+        if os.path.exists(t) or os.path.islink(t):
+            valid_targets.append(t)
 
     metadata[skill_name] = {
         "source": str(config.SKILL_REPO / skill_name),
-        "targets": target_paths,
+        "targets": valid_targets,
     }
     config.save_metadata(metadata)
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: install_skill.py <skill-path-or-file>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="Install a skill to skill_repo and sync to platforms."
+    )
+    parser.add_argument(
+        "skill_path", help="Path to local skill, .skill file, or Git URL"
+    )
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help="Install to current project's local config directories instead of global system directores",
+    )
 
-    source_path = Path(sys.argv[1]).resolve()
+    args = parser.parse_args()
 
-    if not source_path.exists():
-        print(f"❌ Error: Path does not exist: {source_path}")
-        sys.exit(1)
+    source_input = args.skill_path
+    is_git = False
+    temp_dir = None
+    source_path = None
+    skill_name = None
 
-    # Scan available platforms
-    available_platforms = config.get_available_platforms()
+    try:
+        # Detect if Git URL
+        if source_input.startswith("http") or source_input.startswith("git@"):
+            is_git = True
+            skill_name = get_skill_name_from_url(source_input)
+            print(f"📦 Detected Git URL for skill: {skill_name}")
 
-    # Get skill name
-    skill_name = get_skill_name(source_path)
-    print(f"📦 Installing skill: {skill_name}")
-    print(f"   Source: {source_path}")
+            # Determine strict source path (temp or direct to repo?)
+            # To handle conflicts properly, let's clone to a temp dir first
+            temp_dir = tempfile.mkdtemp()
+            # The clone will create the subdir inside temp_dir
+            source_path = clone_git_repo(source_input, Path(temp_dir) / skill_name)
+        else:
+            source_path = Path(source_input).resolve()
+            if not source_path.exists():
+                print(f"❌ Error: Path does not exist: {source_path}")
+                sys.exit(1)
+            skill_name = get_skill_name(source_path)
+            print(f"📦 Installing skill: {skill_name}")
+            print(f"   Source: {source_path}")
 
-    # Check for conflicts
-    conflicts = check_conflicts(skill_name, available_platforms)
-    force = False
+        # Determine target platforms (Global vs Local)
+        available_platforms = get_platform_paths(args.local)
 
-    # Filter out self-conflicts if reinstalling from repo
-    if source_path == config.SKILL_REPO / skill_name:
-        conflicts.pop("repo", None)
+        # Check for conflicts
+        conflicts = check_conflicts(skill_name, available_platforms)
+        force = False
 
-    if conflicts:
-        if not ask_user_overwrite(conflicts):
-            print("\n❌ Installation cancelled.")
-            sys.exit(0)
-        force = True
+        # Filter out self-conflicts if reinstalling from repo
+        if not is_git and source_path == config.SKILL_REPO / skill_name:
+            conflicts.pop("repo", None)
 
-    # Install to Central Repo
-    print(f"\n📥 Installing to Central Repo (~/.skill_repo)...")
-    repo_path = install_to_repo(source_path, skill_name, force)
-    print(f"   ✅ Stored at: {repo_path}")
+        if conflicts:
+            if not ask_user_overwrite(conflicts):
+                print("\n❌ Installation cancelled.")
+                sys.exit(0)
+            force = True
 
-    # Ask user which platforms to sync
-    sync_targets = ask_sync_targets(available_platforms)
+        # Install to Central Repo
+        print(f"\n📥 Installing to Central Repo (~/.skill_repo)...")
+        repo_path = install_to_repo(source_path, skill_name, force, is_git)
+        print(f"   ✅ Stored at: {repo_path}")
 
-    # Sync to platforms
-    sync_to_platforms(repo_path, skill_name, sync_targets, available_platforms, force)
+        # Ask user which platforms to sync
+        sync_targets = ask_sync_targets(available_platforms, args.local)
 
-    # Update metadata
-    update_sync_metadata(skill_name, sync_targets, available_platforms)
+        # Sync to platforms
+        sync_to_platforms(
+            repo_path, skill_name, sync_targets, available_platforms, force
+        )
 
-    print(f"\n✅ Skill '{skill_name}' setup complete!")
+        # Update metadata
+        update_sync_metadata(skill_name, sync_targets, available_platforms)
+
+        print(f"\n✅ Skill '{skill_name}' setup complete!")
+
+    finally:
+        # Cleanup temp if used
+        if temp_dir and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
 
 
 if __name__ == "__main__":

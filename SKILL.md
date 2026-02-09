@@ -44,20 +44,23 @@ Install a skill to central repo and sync to selected platforms.
 
 **Usage**:
 ```bash
-python3 scripts/install_skill.py <path-to-skill>
+python3 scripts/install_skill.py <path-or-url> [--local]
 ```
 
 **Supported inputs**:
 - Local skill directory: `./my-skill/`
 - Packaged .skill file: `./my-skill.skill`
-- Cloned GitHub repo: `/path/to/cloned-repo/`
+- **Git Repository URL**: `https://github.com/user/my-skill.git`
+
+**Flags**:
+- `--local`: Install skill to the current project's local configuration (e.g., `./.claude/skills`) instead of the global system directory.
 
 **Workflow**:
-1. Extract skill name from path or filename
-2. **Scan system** for available AI platforms
+1. Extract skill name from path, filename, or Git URL
+2. **Scan system** (or local project) for available AI platforms
 3. Check for conflicts in repo and discovered platforms
 4. Ask user confirmation if conflicts exist
-5. Install to `~/.skill_repo/` (central)
+5. Install to `~/.skill_repo/` (central). *Note: Git URLs are cloned here.*
 6. Ask user which detected platforms to enable (interactive selection)
 7. Create symlinks to selected platforms
 8. Update sync metadata
@@ -72,20 +75,21 @@ python3 scripts/install_skill.py <path-to-skill>
 Enter choice (e.g. '1' or '3'):
 ```
 
-**Examples**:
-```bash
-# Install from directory
-python3 ~/.claude/skills/skill-sync/scripts/install_skill.py ./pdf-editor/
-
-# Install from .skill file
-python3 ~/.claude/skills/skill-sync/scripts/install_skill.py ./pdf-editor.skill
-
 # Install from cloned GitHub repo
 git clone https://github.com/user/awesome-skill.git
 python3 ~/.claude/skills/skill-sync/scripts/install_skill.py ./awesome-skill/
 ```
 
-### 2. List All Skills (`list_synced.py`)
+### 2. Update Skills (`update_skills.py`)
+
+Update all Git-based skills in the central repository by running `git pull`.
+
+**Usage**:
+```bash
+python3 scripts/update_skills.py
+```
+
+### 3. List All Skills (`list_synced.py`)
 
 Display all skills in central repo and their sync status across all detected platforms.
 
@@ -129,7 +133,7 @@ python3 scripts/list_synced.py
    Synced to 1+ platforms: 2
 ```
 
-### 3. Uninstall Skill (`uninstall_skill.py`)
+### 4. Uninstall Skill (`uninstall_skill.py`)
 
 Remove a skill from selected locations with interactive selection.
 

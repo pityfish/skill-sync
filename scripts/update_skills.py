@@ -79,8 +79,17 @@ def check_updates_available(repo_path: Path) -> tuple[bool, str]:
 def update_git_repo(repo_path: Path) -> str:
     """Run git pull in the repo and return the status."""
     try:
+        # Get HEAD before pull
+        head_before = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(repo_path),
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
         # Run git pull
-        result = subprocess.run(
+        subprocess.run(
             ["git", "pull"],
             cwd=str(repo_path),
             check=True,
@@ -88,9 +97,16 @@ def update_git_repo(repo_path: Path) -> str:
             text=True,
         )
 
-        output = result.stdout.strip()
+        # Get HEAD after pull
+        head_after = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(repo_path),
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
 
-        if "Already up to date" in output or "Already up-to-date" in output:
+        if head_before == head_after:
             return "up_to_date"
 
         return "updated"
@@ -157,21 +173,36 @@ def ask_skills_to_update(skills):
         idx = offset + i
         print(f"   {idx}. {name:20} [{msg}]")
 
-    all_idx = len(all_options) + 1
-    print(f"\n   {all_idx}. All skills")
+    print(f"\n   A. Update All (Default)")
 
-    choice = input(f"\nEnter choice (e.g. '1,2' or '{all_idx}'): ").strip()
+    choice = input(f"\nEnter choice (e.g. '1,2' or 'A', default 'A'): ").strip()
 
-    if not choice:
-        return []
-
-    if str(all_idx) in choice or "all" in choice.lower():
+    if not choice or choice.lower() == "a" or "all" in choice.lower():
         return [path for name, path, msg in all_options]
 
     selected_paths = []
-    for i, (name, path, msg) in enumerate(all_options, 1):
-        if str(i) in choice.split(","):
-            selected_paths.append(path)
+
+    # Handle ranges and commas
+    parts = choice.split(",")
+    for part in parts:
+        part = part.strip()
+        if "-" in part:
+            try:
+                start, end = map(int, part.split("-"))
+                for i in range(start, end + 1):
+                    if 1 <= i <= len(all_options):
+                        name, path, msg = all_options[i - 1]
+                        selected_paths.append(path)
+            except ValueError:
+                pass
+        else:
+            try:
+                i = int(part)
+                if 1 <= i <= len(all_options):
+                    name, path, msg = all_options[i - 1]
+                    selected_paths.append(path)
+            except ValueError:
+                pass
 
     return selected_paths
 
